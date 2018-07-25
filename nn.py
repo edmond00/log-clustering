@@ -66,10 +66,18 @@ class NeuralNetwork:
 
         self.optim = tf.train.AdamOptimizer(self.learningRate).minimize(self.ncost)
 
+        self.saver = tf.train.Saver()
+
 
         self.session = tf.Session()
         self.session.run(tf.global_variables_initializer())
         self.session.run(tf.local_variables_initializer())
+
+    def save(self, savename):
+        self.saver.save(self.session, savename)
+
+    def restore(self, savename):
+        self.saver.restore(self.session, savename)
     
     def reinit(self):
         self.session.run(tf.global_variables_initializer())
@@ -123,25 +131,42 @@ class NeuralNetwork:
             trainC, testC = self.getCost(data)
             trainCost.append(trainC)
             testCost.append(testC)
-            xticks.append(reg)
+            xticks.append(round(reg, 5))
             reg *= step
         self.plotLines([trainCost, testCost], ["train cost", "test cost"], xticks, "evolution of the train cost and test cost depending on the regularization factor")
 
-    def check(self, data):
-        batchInput, batchOutput = data.testBatch()
-        p, cost = self.session.run([self.predictions, self.ncost], feed_dict={
-            self.batchSize: len(batchOutput),
+    
+    def predict(self, batchInput):
+        p= self.session.run(self.predictions, feed_dict={
+            self.batchSize: len(batchInput),
             self.inputs: batchInput,
-            self.labels: batchOutput,
             self.regularization: 0.0,
             self.keepProb: 1.0
         })
+        return p
+
+    def check(self, data):
+        batchInput, batchOutput = data.testBatch()
+        p = self.predict(batchInput)
         expected = batchOutput.argmax(axis=1)
         predicted = p.argmax(axis=1)
         ok = np.sum(expected == predicted)
         percent = int((ok / len(predicted)) * 100)
         print("accuracy : " + str(ok) + "/" + str(len(predicted)) + " (" + str(percent) + "%)")
     
+    def printResult(self, data, log):
+        batchInput = np.array([data.logToVec(log)])
+        p = self.predict(batchInput)[0]
+        predictedLabel = p.argmax()
+        print("")
+        print("'" + log + "' predicted as " + data.clusters[predictedLabel+1].name)
+        print("")
+        print("details :")
+        for i in range(len(p)):
+            print(data.clusters[i+1].name + " : " + str(p[i]))
+            
+            
+
     def plotLines(self, arrays, labels, xticks, title):
         fig = plt.figure(figsize=(15, 8))
         lines = []
@@ -155,3 +180,51 @@ class NeuralNetwork:
         plt.tight_layout()
         plt.title(title)
         plt.show()
+
+    def specificResult(self, data, categoryName):
+        positiveIndex = data.getCategoryIndex(categoryName)
+        batchInput, batchOutput = data.testBatch()
+        p = self.predict(batchInput)
+
+        labels = batchOutput.argmax(axis=1)
+        predictions = p.argmax(axis=1)
+
+        truePositives = len(predictions[(predictions == labels) & (labels == positiveIndex)])
+        trueNegatives = len(predictions[(predictions != positiveIndex) & (labels != positiveIndex)])
+        falsePositives = len(predictions[(predictions != labels) & (predictions == positiveIndex)])
+        falseNegatives = len(predictions[(labels == positiveIndex) & (predictions != positiveIndex)])
+        truePositivesPercent = truePositives / len(labels[labels == positiveIndex])
+        trueNegativesPercent = trueNegatives / len(labels[labels != positiveIndex])
+        falsePositivesPercent = falsePositives / len(labels[labels != positiveIndex])
+        falseNegativesPercent = falseNegatives / len(labels[labels == positiveIndex])
+
+        precision = 0
+        recall = 0
+        f1 = 0
+        if truePositives > 0:
+            precision = truePositives / (truePositives+falsePositives)
+            recall = truePositives / (truePositives+falseNegatives)
+            f1 = 2 * (recall*precision) / (recall+precision)
+
+        print("result for " + categoryName)
+        print("true positives : " + str(int(truePositivesPercent*100)) + "%")
+        print("false positives : " + str(int(falsePositivesPercent*100)) + "%")
+        print("true negatives : " + str(int(trueNegativesPercent*100)) + "%")
+        print("false negatives : " + str(int(falseNegativesPercent*100)) + "%")
+        print("precision : " + str(int(precision*100)) + "%")
+        print("recall : " + str(int(recall*100)) + "%")
+        print("f1 score : " + str(int(f1*100)) + "%")
+
+        return {
+            "truePositives": truePositives,
+            "falsePositives": falsePositives,
+            "trueNegatives": trueNegatives,
+            "falseNegatives": falseNegatives,
+            "truePositivesPercent": truePositivesPercent,
+            "falsePositivesPercent": falsePositivesPercent,
+            "trueNegativesPercent": trueNegativesPercent,
+            "falseNegativesPercent": falseNegativesPercent,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1
+        }

@@ -8,14 +8,21 @@ from matplotlib.font_manager import FontProperties
 from matplotlib import rcParams
 from tqdm import tqdm
 from sklearn.feature_extraction.text import TfidfVectorizer
+from os import listdir
+from os.path import isfile, join
+import csv
 
-numberCluster = 8
+numberCluster = 9
+
+class ParserError(Exception): pass
 
 class Cluster:
 
-    def __init__(self, numberId, batchSize, name):
+    def __init__(self, numberId, batchSize, testBatchSize, name):
         self.numberId = numberId
+        self.name = name
         self.batchSize = batchSize
+        self.testBatchSize = testBatchSize
         self.label = np.repeat(0, numberCluster)
         self.label[numberId-1] = 1
         self.data = []
@@ -25,58 +32,110 @@ class Cluster:
     def addData(self, index):
         self.data.append(index)
 
+    def printOccurences(self):
+        print(self.name + " : " + str(len(self.data)))
+
     def splitTrainTest(self, testPercent):
+        if len(self.data) == 0:
+            return
         self.test = np.random.choice(self.data, int(len(self.data)*testPercent), replace=False)
         self.train = np.array([i for i in self.data if i not in self.test])
 
     def trainBatch(self, data):
+        if len(self.train) == 0:
+            return 
         inputsIndex = np.random.choice(self.train, self.batchSize, replace=True)
         inputs = np.take(data.frequencyVectors, inputsIndex, axis=0)
         outputs = np.repeat([self.label], self.batchSize, axis=0)
         return inputs, outputs
 
     def testBatch(self, data):
-        inputsIndex = np.random.choice(self.test, self.batchSize, replace=True)
+        if len(self.train) == 0:
+            return
+        inputsIndex = np.random.choice(self.test, self.testBatchSize, replace=True)
         inputs = np.take(data.frequencyVectors, inputsIndex, axis=0)
-        outputs = np.repeat([self.label], self.batchSize, axis=0)
+        outputs = np.repeat([self.label], self.testBatchSize, axis=0)
         return inputs, outputs
 
 class Data:
 
-    def addCluster(self, numberId, batchSize, name):
-        self.clusters[numberId] = Cluster(numberId, batchSize, name)
+    def getCategoryId(self, categoryName):
+        for key,cluster in self.clusters.items():
+            if cluster.name == categoryName:
+                return cluster.numberId 
+        raise ParserError("WARNING : can not find cluster id for name '" + categoryName + '"')
+        
+
+    def getAllFiles(self, dirname):
+        return [f for f in listdir(dirname) if isfile(join(dirname, f))]
+
+
+    def parseLine(self, line, inputIndex, categoryIndex):
+        splits = list(csv.reader([line], delimiter=','))[0]
+        try:
+            return splits[inputIndex], self.getCategoryId(splits[categoryIndex])
+        except IndexError as e:
+            raise ParserError("WARNING : index error when parsing '" + line + '"')
+
+
+    def getDataFromFile(self, dirname, filename, inputIndex, categoryIndex):
+        f = open(dirname + "/" + filename, "r", encoding='utf-8')
+        line = f.readline()
+        first = True
+        while line:
+            if first:
+                first = False
+            else:
+                try:
+                    inputString, categoryId = self.parseLine(line, inputIndex, categoryIndex)
+                    self.clusters[categoryId].addData(len(self.logs))
+                    self.logs.append(inputString)
+                except ParserError as e:
+                    print(e)
+            line = f.readline()
+
+    def getDataFromDirectory(self, dirname, inputIndex, categoryIndex):
+        allfiles = self.getAllFiles(dirname)
+        print("get data from " + dirname)
+        for onefile in tqdm(allfiles):
+               self.getDataFromFile(dirname, onefile, inputIndex, categoryIndex)
+
+
+    def addCluster(self, numberId, batchSize, testBatchSize, name):
+        self.clusters[numberId] = Cluster(numberId, batchSize, testBatchSize, name)
+
+    def printOccurences(self):
+        for key,cluster in self.clusters.items():
+            cluster.printOccurences()
 
     def __init__(self):
 
         self.clusters = {}
-        self.addCluster(1, 10, "OK")
-        self.addCluster(2, 10, "NG")
-        self.addCluster(3, 10, "検閲")
-        self.addCluster(4, 10, "広告")
-        self.addCluster(5, 10, "対応不要会話")
-        self.addCluster(6, 10, "特殊文字")
-        self.addCluster(7, 10, "コード入力系")
-        self.addCluster(8, 10, "入力ミス")
-
-        f = open("logs", "r")
-        line = f.readline()
+        self.addCluster(1, 10, 200, "OK")
+        self.addCluster(2, 10, 200, "NG")
+        self.addCluster(3, 10, 200, "検閲")
+        self.addCluster(4, 10, 200, "広告")
+        self.addCluster(5, 10, 200, "対応不要会話")
+        self.addCluster(6, 10, 200, "特殊文字")
+        self.addCluster(7, 10, 200, "コード入力系")
+        self.addCluster(8, 10, 200, "入力ミス")
+        self.addCluster(9, 10, 200, "インナーテスト")
         self.logs = []
-        index = 0
-        while line:
-            splits = line.split("\t")
-            self.logs.append(splits[0])
-            label = int(splits[1])
-            self.clusters[label].addData(index)
-            line = f.readline()
-            index += 1
+
+        print("read data...")
+
+        self.getDataFromDirectory("newLogs", 7, 8)
+        self.getDataFromDirectory("oldLogs", 1, 3)
+        self.printOccurences()
 
         for key,cluster in self.clusters.items():
             cluster.splitTrainTest(0.25)
 
-        self.segmenter = tinysegmenter.TinySegmenter()
-        self.vectorizer = TfidfVectorizer(min_df=0.0001, tokenizer=self.tokenize)
-        #self.vectorizer = TfidfVectorizer(min_df=0.001, tokenizer=self.tokenize)
         print("vectorize logs...")
+
+        self.segmenter = tinysegmenter.TinySegmenter()
+        self.vectorizer = TfidfVectorizer(min_df=0.00001, tokenizer=self.tokenize)
+        #self.vectorizer = TfidfVectorizer(min_df=0.001, tokenizer=self.tokenize)
         vectors = self.vectorizer.fit_transform(self.logs)
         self.frequencyVectors = vectors.toarray()
 
@@ -108,12 +167,13 @@ class Data:
         inputs = []
         outputs = []
         for key, cluster in self.clusters.items():
-            if testing:
-                i,o = cluster.testBatch(self)
-            else:
-                i,o = cluster.trainBatch(self)
-            inputs.append(i)
-            outputs.append(o)
+            if len(cluster.data) > 0:
+                if testing:
+                    i,o = cluster.testBatch(self)
+                else:
+                    i,o = cluster.trainBatch(self)
+                inputs.append(i)
+                outputs.append(o)
         inputs = np.concatenate(inputs, axis=0)
         outputs = np.concatenate(outputs, axis=0)
         ri = np.arange(len(inputs))
@@ -127,4 +187,10 @@ class Data:
 
     def outputLen(self):
         return len(self.clusters)
+
+    def getCategoryIndex(self, categoryName):
+        for key, cluster in self.clusters.items():
+            if cluster.name == categoryName:
+                return key -1
+
 
