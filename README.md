@@ -35,6 +35,10 @@ learningRate : 学習率
   
 > neuralNetwork.printResult(data, "テストです")  
   
+分析の結果をCSVで保存できます。  
+  
+> neuralNetwork.saveResultInFile(data, "/tmp/result.csv")  
+  
 学習したモデルを保存できます。  
   
 > neuralNetwork.save("/tmp/backup")  

@@ -164,7 +164,33 @@ class NeuralNetwork:
         print("details :")
         for i in range(len(p)):
             print(data.clusters[i+1].name + " : " + str(p[i]))
-            
+
+
+    def writeCsvLine(self, f, data, ilog, clusterName, trainOrTest):
+        batchInput = np.array([data.logToVec(data.logs[ilog], data.logIntents[ilog])])
+        p = self.predict(batchInput)[0]
+        predictedLabel = p.argmax()
+        labelName = data.clusters[predictedLabel+1].name
+
+        csvLine = []
+        csvLine.append('"' + data.logs[ilog] + '"')
+        csvLine.append(data.logIntents[ilog])
+        csvLine.append(labelName)
+        csvLine.append(clusterName)
+        csvLine.append(trainOrTest)
+        f.write(",".join(csvLine))
+        f.write("\n")
+
+    def saveResultInFile(self, data, filename):
+        f = open(filename, "w")
+        f.write('\ufeff' + "input,intents,predicted,expected,used for\n")
+        for key,cluster in data.clusters.items():
+            print(cluster.name + " : write test set")
+            for ilog in tqdm(cluster.test):
+                self.writeCsvLine(f, data, ilog, cluster.name, "test")
+            print(cluster.name + " : write train set")
+            for ilog in tqdm(cluster.train):
+                self.writeCsvLine(f, data, ilog, cluster.name, "train")
             
 
     def plotLines(self, arrays, labels, xticks, title):
