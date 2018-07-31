@@ -154,8 +154,8 @@ class NeuralNetwork:
         percent = int((ok / len(predicted)) * 100)
         print("accuracy : " + str(ok) + "/" + str(len(predicted)) + " (" + str(percent) + "%)")
     
-    def printResult(self, data, log):
-        batchInput = np.array([data.logToVec(log)])
+    def printResult(self, data, log, intent = None):
+        batchInput = np.array([data.logToVec(log, intent)])
         p = self.predict(batchInput)[0]
         predictedLabel = p.argmax()
         print("")
