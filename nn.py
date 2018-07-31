@@ -178,12 +178,17 @@ class NeuralNetwork:
         csvLine.append(labelName)
         csvLine.append(clusterName)
         csvLine.append(trainOrTest)
+        for i in range(len(p)):
+            csvLine.append(str(p[i]))
         f.write(",".join(csvLine))
         f.write("\n")
 
     def saveResultInFile(self, data, filename):
         f = open(filename, "w")
-        f.write('\ufeff' + "input,intents,predicted,expected,used for\n")
+        f.write('\ufeff' + "input,intents,predicted,expected,used for")
+        for i in range(len(data.clusters)):
+            f.write(",score " + data.clusters[i+1].name)
+        f.write("\n")
         for key,cluster in data.clusters.items():
             print(cluster.name + " : write test set")
             for ilog in tqdm(cluster.test):
